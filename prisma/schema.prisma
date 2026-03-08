@@ -1,0 +1,202 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id               String          @id @default(uuid())
+  name             String
+  email            String          @unique
+  password         String
+  role             Role            @default(standard)
+  membershipStatus String          @default("standard")
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  completions      Completion[]
+  savedResources   SavedResource[]
+}
+
+model Subject {
+  id         String      @id @default(uuid())
+  name       String      @unique
+  slug       String      @unique
+  createdAt  DateTime    @default(now())
+  papers     Paper[]
+  topics     Topic[]
+  worksheets Worksheet[]
+}
+
+model Topic {
+  id         String      @id @default(uuid())
+  name       String
+  slug       String
+  subjectId  String
+  createdAt  DateTime    @default(now())
+  subject    Subject     @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  worksheets Worksheet[]
+
+  @@unique([subjectId, slug])
+}
+
+model Worksheet {
+  id           String   @id @default(uuid())
+  title        String
+  subjectId    String
+  topicId      String
+  pdfUrl       String
+  answerPdfUrl String?
+  difficulty   String   @default("medium")
+  createdAt    DateTime @default(now())
+  subject      Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  topic        Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
+}
+
+model Completion {
+  id          String   @id @default(uuid())
+  userId      String
+  itemId      String
+  itemType    String
+  completedAt DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, itemId, itemType])
+}
+
+model SavedResource {
+  id       String   @id @default(uuid())
+  userId   String
+  itemId   String
+  itemType String
+  savedAt  DateTime @default(now())
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, itemId, itemType])
+}
+
+model VocabularyWord {
+  id              String   @id @default(uuid())
+  word            String
+  meaning         String
+  synonym         String
+  antonym         String
+  exampleSentence String
+  pronunciation   String
+  date            DateTime @unique
+  createdAt       DateTime @default(now())
+}
+
+model Competition {
+  id               String   @id @default(uuid())
+  title            String
+  description      String
+  rules            String?
+  image            String?
+  registrationLink String?
+  eventDate        DateTime
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Activity {
+  id           String   @id @default(uuid())
+  title        String
+  description  String
+  instructions String?
+  worksheetUrl String?
+  image        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model ArtsCraftProject {
+  id           String   @id @default(uuid())
+  title        String
+  description  String
+  instructions String?
+  images       String[]
+  videoUrl     String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Event {
+  id          String   @id @default(uuid())
+  title       String
+  description String
+  date        DateTime
+  bookingLink String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model BlogPost {
+  id          String    @id @default(uuid())
+  title       String
+  slug        String    @unique
+  content     String
+  image       String?
+  excerpt     String
+  author      String
+  publishDate DateTime?
+  status      String    @default("draft")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Magazine {
+  id        String   @id @default(uuid())
+  title     String
+  month     Int
+  year      Int
+  pdfUrl    String
+  coverUrl  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Paper {
+  id           String   @id @default(uuid())
+  title        String
+  subjectId    String
+  difficulty   String   @default("medium")
+  pdfUrl       String
+  answerPdfUrl String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  subject      Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+}
+
+model Enquiry {
+  id         String   @id @default(uuid())
+  parentName String
+  email      String
+  phone      String?
+  message    String
+  createdAt  DateTime @default(now())
+}
+
+model FAQ {
+  id        String @id @default(uuid())
+  question  String
+  answer    String
+  category  String
+  sortOrder Int    @default(0)
+}
+
+model Testimonial {
+  id         String   @id @default(uuid())
+  parentName String
+  content    String
+  rating     Int?
+  approved   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+}
+
+enum Role {
+  admin
+  standard
+  premium
+}

@@ -1,0 +1,32 @@
+import { Router } from "express";
+import {
+  getProjects,
+  getProject,
+  createProject,
+  updateProject,
+  deleteProject,
+} from "../controllers/artsCraftController.js";
+import { authenticate, requireRole } from "../middleware/auth.js";
+import { upload } from "../middleware/upload.js";
+
+const router = Router();
+
+router.get("/", getProjects);
+router.get("/:id", getProject);
+router.post(
+  "/",
+  authenticate,
+  requireRole("admin"),
+  upload.array("images", 10),
+  createProject,
+);
+router.put(
+  "/:id",
+  authenticate,
+  requireRole("admin"),
+  upload.array("images", 10),
+  updateProject,
+);
+router.delete("/:id", authenticate, requireRole("admin"), deleteProject);
+
+export default router;
