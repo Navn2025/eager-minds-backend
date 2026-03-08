@@ -1,0 +1,15 @@
+import type { Request, Response } from "express";
+import type { AuthRequest } from "../middleware/auth.js";
+export declare function getSubjects(_req: Request, res: Response): Promise<void>;
+export declare function createSubject(req: Request, res: Response): Promise<void>;
+export declare function getTopics(req: Request, res: Response): Promise<void>;
+export declare function createTopic(req: Request, res: Response): Promise<void>;
+export declare function getWorksheets(req: Request, res: Response): Promise<void>;
+export declare function createWorksheet(req: AuthRequest, res: Response): Promise<void>;
+export declare function deleteWorksheet(req: Request, res: Response): Promise<void>;
+export declare function completeWorksheet(req: AuthRequest, res: Response): Promise<void>;
+export declare function getWordOfTheDay(_req: Request, res: Response): Promise<void>;
+export declare function createWordOfTheDay(req: Request, res: Response): Promise<void>;
+export declare function listVocabularyWords(req: Request, res: Response): Promise<void>;
+export declare function deleteVocabularyWord(req: Request, res: Response): Promise<void>;
+export declare function getUserDashboard(req: AuthRequest, res: Response): Promise<void>;

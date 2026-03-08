@@ -341,13 +341,15 @@ export async function getUserDashboard(
 
     // Compute progress per subject
     const worksheetCompletions = completions.filter(
-      (c) => c.itemType === "worksheet",
+      (c: { itemType: string }) => c.itemType === "worksheet",
     );
     const subjects = await prisma.subject.findMany({
       include: { _count: { select: { worksheets: true } } },
     });
 
-    const worksheetIds = worksheetCompletions.map((c) => c.itemId);
+    const worksheetIds = worksheetCompletions.map(
+      (c: { itemId: string }) => c.itemId,
+    );
     const completedWorksheets =
       worksheetIds.length > 0
         ? await prisma.worksheet.findMany({
@@ -356,19 +358,25 @@ export async function getUserDashboard(
           })
         : [];
 
-    const progress = subjects.map((subject) => {
-      const total = subject._count.worksheets;
-      const completed = completedWorksheets.filter(
-        (w) => w.subjectId === subject.id,
-      ).length;
-      return {
-        subjectId: subject.id,
-        subjectName: subject.name,
-        total,
-        completed,
-        percentage: total > 0 ? Math.round((completed / total) * 100) : 0,
-      };
-    });
+    const progress = subjects.map(
+      (subject: {
+        id: string;
+        name: string;
+        _count: { worksheets: number };
+      }) => {
+        const total = subject._count.worksheets;
+        const completed = completedWorksheets.filter(
+          (w: { subjectId: string }) => w.subjectId === subject.id,
+        ).length;
+        return {
+          subjectId: subject.id,
+          subjectName: subject.name,
+          total,
+          completed,
+          percentage: total > 0 ? Math.round((completed / total) * 100) : 0,
+        };
+      },
+    );
 
     res.json({ user, completions, saved, progress });
   } catch (error) {
