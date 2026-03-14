@@ -15,6 +15,7 @@ import paperRoutes from "./routes/papers.js";
 import enquiryRoutes from "./routes/enquiries.js";
 import faqRoutes from "./routes/faqs.js";
 import testimonialRoutes from "./routes/testimonials.js";
+import prisma from "./lib/prisma.js";
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -66,6 +67,20 @@ app.use("/api/testimonials", testimonialRoutes);
 
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok" });
+});
+
+app.get("/api/visitors", async (_req, res) => {
+  try {
+    const stat = await prisma.siteStat.upsert({
+      where: { id: "global" },
+      update: { visitors: { increment: 1 } },
+      create: { id: "global", visitors: 144195 },
+    });
+    res.json({ visitors: stat.visitors });
+  } catch (error) {
+    console.error("Visitor route error", error);
+    res.status(500).json({ visitors: null });
+  }
 });
 
 app.listen(PORT, () => {

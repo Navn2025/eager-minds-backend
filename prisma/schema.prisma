@@ -200,3 +200,9 @@ enum Role {
   standard
   premium
 }
+
+model SiteStat {
+  id        String   @id @default("global")
+  visitors  Int      @default(0)
+  updatedAt DateTime @updatedAt
+}

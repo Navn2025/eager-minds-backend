@@ -1,0 +1,1 @@
+import { PrismaClient } from '@prisma/client'; const prisma = new PrismaClient(); async function main() { console.log('Papers:', await prisma.paper.count()); console.log('Mags:', await prisma.magazine.count()); console.log('Comps:', await prisma.competition.count()); } main();

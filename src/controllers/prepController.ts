@@ -1,12 +1,34 @@
 import type { Request, Response } from "express";
 import prisma from "../lib/prisma.js";
 import type { AuthRequest } from "../middleware/auth.js";
+import { uploadFileToCloud } from "../middleware/upload.js";
 
 // Subjects
-export async function getSubjects(_req: Request, res: Response): Promise<void> {
+export async function getSubjects(req: Request, res: Response): Promise<void> {
   try {
+    const includeFull = req.query.include === "full";
+
     const subjects = await prisma.subject.findMany({
-      include: { _count: { select: { topics: true, worksheets: true } } },
+      include: includeFull
+        ? {
+            _count: { select: { topics: true, worksheets: true } },
+            topics: {
+              include: {
+                worksheets: {
+                  select: {
+                    id: true,
+                    title: true,
+                    pdfUrl: true,
+                    answerPdfUrl: true,
+                    difficulty: true,
+                  },
+                  orderBy: { createdAt: "desc" },
+                },
+              },
+              orderBy: { name: "asc" },
+            },
+          }
+        : { _count: { select: { topics: true, worksheets: true } } },
       orderBy: { name: "asc" },
     });
     res.json(subjects);
@@ -22,6 +44,11 @@ export async function createSubject(
 ): Promise<void> {
   try {
     const { name, slug } = req.body;
+    if (!name || !String(name).trim()) {
+      res.status(400).json({ message: "Subject name is required" });
+      return;
+    }
+
     const subjectSlug =
       slug ||
       name
@@ -34,6 +61,19 @@ export async function createSubject(
     res.status(201).json(subject);
   } catch (error) {
     console.error("CreateSubject error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+export async function deleteSubject(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  try {
+    await prisma.subject.delete({ where: { id: req.params.id } });
+    res.json({ message: "Subject deleted" });
+  } catch (error) {
+    console.error("DeleteSubject error:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 }
@@ -64,6 +104,11 @@ export async function getTopics(req: Request, res: Response): Promise<void> {
 export async function createTopic(req: Request, res: Response): Promise<void> {
   try {
     const { name, slug, subjectId } = req.body;
+    if (!name || !String(name).trim() || !subjectId) {
+      res.status(400).json({ message: "name and subjectId are required" });
+      return;
+    }
+
     const topicSlug =
       slug ||
       name
@@ -80,7 +125,58 @@ export async function createTopic(req: Request, res: Response): Promise<void> {
   }
 }
 
+export async function deleteTopic(req: Request, res: Response): Promise<void> {
+  try {
+    await prisma.topic.delete({ where: { id: req.params.id } });
+    res.json({ message: "Topic deleted" });
+  } catch (error) {
+    console.error("DeleteTopic error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}
+
 // Worksheets
+export async function getAllWorksheets(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  try {
+    const {
+      topicId,
+      subjectId,
+      difficulty,
+      page: pageStr,
+      limit: limitStr,
+    } = req.query;
+
+    const page = Math.max(1, parseInt(pageStr as string) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(limitStr as string) || 20));
+    const where: Record<string, unknown> = {};
+    if (topicId) where.topicId = topicId;
+    if (subjectId) where.subjectId = subjectId;
+    if (difficulty) where.difficulty = difficulty;
+
+    const [worksheets, total] = await Promise.all([
+      prisma.worksheet.findMany({
+        where,
+        include: {
+          topic: { select: { name: true, slug: true } },
+          subject: { select: { name: true, slug: true } },
+        },
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.worksheet.count({ where }),
+    ]);
+
+    res.json({ worksheets, total, page, totalPages: Math.ceil(total / limit) });
+  } catch (error) {
+    console.error("GetAllWorksheets error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}
+
 export async function getWorksheets(
   req: Request,
   res: Response,
@@ -139,13 +235,48 @@ export async function createWorksheet(
       return;
     }
 
+    if (!topicId) {
+      res.status(400).json({ message: "topicId is required" });
+      return;
+    }
+
+    const topic = await prisma.topic.findUnique({
+      where: { id: topicId },
+      select: { id: true, subjectId: true },
+    });
+
+    if (!topic) {
+      res.status(404).json({ message: "Topic not found" });
+      return;
+    }
+
+    if (subjectId && subjectId !== topic.subjectId) {
+      res
+        .status(400)
+        .json({ message: "Subject does not match the selected topic" });
+      return;
+    }
+
+    const pdfResult = await uploadFileToCloud(
+      pdfFile,
+      "eager-minds/worksheets",
+    );
+    let answerPdfUrl: string | null = null;
+    if (answerFile) {
+      const answerResult = await uploadFileToCloud(
+        answerFile,
+        "eager-minds/worksheets",
+      );
+      answerPdfUrl = answerResult.secure_url;
+    }
+
     const worksheet = await prisma.worksheet.create({
       data: {
         title,
-        subjectId,
-        topicId,
-        pdfUrl: `/uploads/${pdfFile.filename}`,
-        answerPdfUrl: answerFile ? `/uploads/${answerFile.filename}` : null,
+        subjectId: topic.subjectId,
+        topicId: topic.id,
+        pdfUrl: pdfResult.secure_url,
+        answerPdfUrl,
         difficulty: difficulty || "medium",
       },
     });
@@ -166,6 +297,73 @@ export async function deleteWorksheet(
     res.json({ message: "Worksheet deleted" });
   } catch (error) {
     console.error("DeleteWorksheet error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+export async function updateWorksheet(
+  req: AuthRequest,
+  res: Response,
+): Promise<void> {
+  try {
+    const { title, subjectId, topicId, difficulty } = req.body;
+    const files = req.files as
+      | { [fieldname: string]: Express.Multer.File[] }
+      | undefined;
+
+    const pdfFile = files?.pdf?.[0];
+    const answerFile = files?.answer?.[0];
+
+    const data: Record<string, unknown> = {};
+    if (title !== undefined) data.title = title;
+    if (difficulty !== undefined) data.difficulty = difficulty;
+
+    if (topicId) {
+      const topic = await prisma.topic.findUnique({
+        where: { id: topicId },
+        select: { id: true, subjectId: true },
+      });
+
+      if (!topic) {
+        res.status(404).json({ message: "Topic not found" });
+        return;
+      }
+
+      if (subjectId && subjectId !== topic.subjectId) {
+        res
+          .status(400)
+          .json({ message: "Subject does not match the selected topic" });
+        return;
+      }
+
+      data.topicId = topic.id;
+      data.subjectId = topic.subjectId;
+    }
+
+    if (pdfFile) {
+      const pdfResult = await uploadFileToCloud(
+        pdfFile,
+        "eager-minds/worksheets",
+      );
+      data.pdfUrl = pdfResult.secure_url;
+    }
+
+    if (answerFile) {
+      const answerResult = await uploadFileToCloud(
+        answerFile,
+        "eager-minds/worksheets",
+      );
+      data.answerPdfUrl = answerResult.secure_url;
+    }
+
+    const worksheet = await prisma.worksheet.update({
+      where: { id: req.params.id },
+      data,
+    });
+
+    res.json(worksheet);
+  } catch (error) {
+    console.error("UpdateWorksheet error:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 }
@@ -249,6 +447,10 @@ export async function createWordOfTheDay(
       pronunciation,
       date,
     } = req.body;
+
+    const targetDate = date ? new Date(date) : new Date();
+    targetDate.setHours(0, 0, 0, 0);
+
     const vocab = await prisma.vocabularyWord.create({
       data: {
         word,
@@ -257,7 +459,7 @@ export async function createWordOfTheDay(
         antonym,
         exampleSentence,
         pronunciation,
-        date: new Date(date),
+        date: targetDate,
       },
     });
     res.status(201).json(vocab);
@@ -307,7 +509,108 @@ export async function deleteVocabularyWord(
   }
 }
 
+export async function updateVocabularyWord(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  try {
+    const {
+      word,
+      meaning,
+      synonym,
+      antonym,
+      exampleSentence,
+      pronunciation,
+      date,
+    } = req.body;
+
+    const data: Record<string, unknown> = {};
+    if (word !== undefined) data.word = word;
+    if (meaning !== undefined) data.meaning = meaning;
+    if (synonym !== undefined) data.synonym = synonym;
+    if (antonym !== undefined) data.antonym = antonym;
+    if (exampleSentence !== undefined) data.exampleSentence = exampleSentence;
+    if (pronunciation !== undefined) data.pronunciation = pronunciation;
+    if (date) {
+      const targetDate = new Date(date);
+      targetDate.setHours(0, 0, 0, 0);
+      data.date = targetDate;
+    }
+
+    const updated = await prisma.vocabularyWord.update({
+      where: { id: req.params.id },
+      data,
+    });
+
+    res.json(updated);
+  } catch (error) {
+    console.error("UpdateVocabularyWord error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}
+
 // Dashboard
+export async function getUserProgress(
+  req: AuthRequest,
+  res: Response,
+): Promise<void> {
+  try {
+    if (!req.user) {
+      res.status(401).json({ message: "Not authenticated" });
+      return;
+    }
+
+    const completions = await prisma.completion.findMany({
+      where: { userId: req.user.id },
+      orderBy: { completedAt: "desc" },
+    });
+
+    // Compute progress per subject
+    const worksheetCompletions = completions.filter(
+      (c: { itemType: string }) => c.itemType === "worksheet",
+    );
+    const subjects = await prisma.subject.findMany({
+      include: { _count: { select: { worksheets: true } } },
+    });
+
+    const worksheetIds = worksheetCompletions.map(
+      (c: { itemId: string }) => c.itemId,
+    );
+    const completedWorksheets =
+      worksheetIds.length > 0
+        ? await prisma.worksheet.findMany({
+            where: { id: { in: worksheetIds } },
+            select: { id: true, subjectId: true },
+          })
+        : [];
+
+    const progress = subjects.map(
+      (subject: {
+        id: string;
+        name: string;
+        _count: { worksheets: number };
+      }) => {
+        const total = subject._count.worksheets;
+        const completed = completedWorksheets.filter(
+          (w: { subjectId: string }) => w.subjectId === subject.id,
+        ).length;
+        return {
+          subjectId: subject.id,
+          subjectName: subject.name,
+          total,
+          completed,
+          percentage: total > 0 ? Math.round((completed / total) * 100) : 0,
+        };
+      },
+    );
+
+    res.json({ progress });
+  } catch (error) {
+    console.error("GetUserProgress error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}
+
 export async function getUserDashboard(
   req: AuthRequest,
   res: Response,
