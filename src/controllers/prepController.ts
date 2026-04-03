@@ -3,6 +3,258 @@ import prisma from "../lib/prisma.js";
 import type { AuthRequest } from "../middleware/auth.js";
 import { uploadFileToCloud } from "../middleware/upload.js";
 
+interface AutoWordPayload {
+  word: string;
+  meaning: string;
+  synonym: string;
+  antonym: string;
+  exampleSentence: string;
+  pronunciation: string;
+}
+
+const fallbackWordBank: AutoWordPayload[] = [
+  {
+    word: "Curious",
+    meaning: "Eager to know or learn something new.",
+    synonym: "Inquisitive",
+    antonym: "Indifferent",
+    exampleSentence:
+      "The curious student asked thoughtful questions in every lesson.",
+    pronunciation: "KYOO-ree-uhs",
+  },
+  {
+    word: "Diligent",
+    meaning: "Showing careful and steady effort in your work.",
+    synonym: "Hardworking",
+    antonym: "Careless",
+    exampleSentence:
+      "She was diligent with her revision and improved every week.",
+    pronunciation: "DIL-uh-juhnt",
+  },
+  {
+    word: "Resilient",
+    meaning: "Able to recover quickly after difficulties.",
+    synonym: "Strong",
+    antonym: "Fragile",
+    exampleSentence:
+      "After a difficult test, he stayed resilient and kept practicing.",
+    pronunciation: "ri-ZIL-yuhnt",
+  },
+  {
+    word: "Eloquent",
+    meaning: "Fluent and persuasive in speaking or writing.",
+    synonym: "Articulate",
+    antonym: "Inarticulate",
+    exampleSentence: "The speaker gave an eloquent speech.",
+    pronunciation: "EL-uh-kwuhnt",
+  },
+  {
+    word: "Meticulous",
+    meaning: "Very careful and precise about details.",
+    synonym: "Thorough",
+    antonym: "Sloppy",
+    exampleSentence:
+      "Her meticulous notes helped the whole group revise effectively.",
+    pronunciation: "muh-TIK-yuh-luhs",
+  },
+];
+
+function parseJsonFromAiContent(content: string): unknown {
+  try {
+    return JSON.parse(content);
+  } catch {
+    const fenced = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+    if (fenced?.[1]) {
+      return JSON.parse(fenced[1]);
+    }
+    const firstBrace = content.indexOf("{");
+    const lastBrace = content.lastIndexOf("}");
+    if (firstBrace >= 0 && lastBrace > firstBrace) {
+      return JSON.parse(content.slice(firstBrace, lastBrace + 1));
+    }
+    throw new Error("No JSON object found");
+  }
+}
+
+function dayOfYear(input: Date): number {
+  const date = new Date(input);
+  const start = new Date(date.getFullYear(), 0, 0);
+  const diff = date.getTime() - start.getTime();
+  return Math.floor(diff / 86400000);
+}
+
+function normalizeAutoWordPayload(raw: unknown): AutoWordPayload | null {
+  if (!raw || typeof raw !== "object") return null;
+  const data = raw as Record<string, unknown>;
+
+  const word = typeof data.word === "string" ? data.word.trim() : "";
+  const meaning = typeof data.meaning === "string" ? data.meaning.trim() : "";
+  const synonym = typeof data.synonym === "string" ? data.synonym.trim() : "";
+  const antonym = typeof data.antonym === "string" ? data.antonym.trim() : "";
+  const exampleSentence =
+    typeof data.exampleSentence === "string" ? data.exampleSentence.trim() : "";
+  const pronunciation =
+    typeof data.pronunciation === "string" ? data.pronunciation.trim() : "";
+
+  if (
+    !word ||
+    !meaning ||
+    !synonym ||
+    !antonym ||
+    !exampleSentence ||
+    !pronunciation
+  ) {
+    return null;
+  }
+
+  return {
+    word,
+    meaning,
+    synonym,
+    antonym,
+    exampleSentence,
+    pronunciation,
+  };
+}
+
+async function autoGenerateWordForDate(date: Date): Promise<AutoWordPayload> {
+  const apiKey = process.env.GROQ_API_KEY;
+  const model = process.env.GROQ_MODEL || "llama-3.1-8b-instant";
+
+  if (!apiKey) {
+    return fallbackWordBank[dayOfYear(date) % fallbackWordBank.length];
+  }
+
+  const promptDate = date.toISOString().slice(0, 10);
+  const prompt = `Generate one vocabulary word for children aged 8-12 for date ${promptDate}. Return JSON only with keys: word, meaning, synonym, antonym, exampleSentence, pronunciation. Keep meaning and example concise and classroom-safe.`;
+
+  try {
+    const groqRes = await fetch(
+      "https://api.groq.com/openai/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          temperature: 0.6,
+          max_tokens: 300,
+          response_format: { type: "json_object" },
+          messages: [
+            {
+              role: "system",
+              content:
+                "You are a primary-school vocabulary coach. Return JSON only.",
+            },
+            { role: "user", content: prompt },
+          ],
+        }),
+      },
+    );
+
+    if (!groqRes.ok) {
+      throw new Error("groq_word_generation_failed");
+    }
+
+    const completion = (await groqRes.json()) as {
+      choices?: Array<{ message?: { content?: string | null } }>;
+    };
+    const content = completion.choices?.[0]?.message?.content;
+
+    if (!content || typeof content !== "string") {
+      throw new Error("groq_word_empty");
+    }
+
+    const parsed = parseJsonFromAiContent(content);
+    const normalized = normalizeAutoWordPayload(parsed);
+    if (!normalized) {
+      throw new Error("groq_word_invalid_payload");
+    }
+
+    return normalized;
+  } catch (error) {
+    console.error("Auto Word generation fallback:", error);
+    return fallbackWordBank[dayOfYear(date) % fallbackWordBank.length];
+  }
+}
+
+function startOfDay(date: Date): Date {
+  const normalized = new Date(date);
+  normalized.setHours(0, 0, 0, 0);
+  return normalized;
+}
+
+function nextDailyRunAt(reference: Date): Date {
+  const nextRun = new Date(reference);
+  nextRun.setHours(0, 5, 0, 0);
+  if (nextRun.getTime() <= reference.getTime()) {
+    nextRun.setDate(nextRun.getDate() + 1);
+  }
+  return nextRun;
+}
+
+export async function ensureWordOfTheDayForDate(date: Date): Promise<void> {
+  const targetDate = startOfDay(date);
+  const nextDay = new Date(targetDate);
+  nextDay.setDate(nextDay.getDate() + 1);
+
+  const existing = await prisma.vocabularyWord.findFirst({
+    where: { date: { gte: targetDate, lt: nextDay } },
+    select: { id: true },
+  });
+
+  if (existing) {
+    return;
+  }
+
+  const generated = await autoGenerateWordForDate(targetDate);
+  await prisma.vocabularyWord.upsert({
+    where: { date: targetDate },
+    update: {},
+    create: {
+      ...generated,
+      date: targetDate,
+    },
+  });
+}
+
+export function startAutomaticWordGeneration(): void {
+  const runGeneration = async (reason: string) => {
+    try {
+      await ensureWordOfTheDayForDate(new Date());
+      console.log(`[WordOfTheDay] ensured for today via ${reason}`);
+    } catch (error) {
+      console.error(
+        `[WordOfTheDay] automatic generation failed (${reason})`,
+        error,
+      );
+    }
+  };
+
+  void runGeneration("startup");
+
+  const scheduleNext = () => {
+    const now = new Date();
+    const nextRun = nextDailyRunAt(now);
+    const delayMs = Math.max(1000, nextRun.getTime() - now.getTime());
+
+    setTimeout(() => {
+      void runGeneration("daily-schedule");
+
+      setInterval(
+        () => {
+          void runGeneration("daily-interval");
+        },
+        24 * 60 * 60 * 1000,
+      );
+    }, delayMs);
+  };
+
+  scheduleNext();
+}
+
 // Subjects
 export async function getSubjects(req: Request, res: Response): Promise<void> {
   try {
@@ -185,6 +437,9 @@ export async function getWorksheets(
     const { subjectSlug } = req.params;
     const { topicId, difficulty, page: pageStr, limit: limitStr } = req.query;
 
+    const page = Math.max(1, parseInt(pageStr as string) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(limitStr as string) || 20));
+
     const subject = await prisma.subject.findUnique({
       where: { slug: subjectSlug },
     });
@@ -193,8 +448,6 @@ export async function getWorksheets(
       return;
     }
 
-    const page = Math.max(1, parseInt(pageStr as string) || 1);
-    const limit = Math.min(50, Math.max(1, parseInt(limitStr as string) || 20));
     const where: Record<string, unknown> = { subjectId: subject.id };
     if (topicId) where.topicId = topicId;
     if (difficulty) where.difficulty = difficulty;
@@ -408,27 +661,48 @@ export async function getWordOfTheDay(
   res: Response,
 ): Promise<void> {
   try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const today = startOfDay(new Date());
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
+
+    await ensureWordOfTheDayForDate(today);
 
     const word = await prisma.vocabularyWord.findFirst({
       where: { date: { gte: today, lt: tomorrow } },
     });
 
     if (!word) {
-      // Fall back to the most recent word
-      const latest = await prisma.vocabularyWord.findFirst({
-        orderBy: { date: "desc" },
-      });
-      res.json(latest || null);
+      res.status(404).json({ message: "Word of the day not found" });
       return;
     }
 
     res.json(word);
   } catch (error) {
     console.error("GetWordOfTheDay error:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+export async function listWordArchive(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  try {
+    const today = startOfDay(new Date());
+    const requestedLimit = parseInt(req.query.limit as string, 10);
+    const limit = Number.isFinite(requestedLimit)
+      ? Math.min(3650, Math.max(1, requestedLimit))
+      : 365;
+
+    const words = await prisma.vocabularyWord.findMany({
+      where: { date: { lt: today } },
+      orderBy: { date: "desc" },
+      take: limit,
+    });
+
+    res.json(words);
+  } catch (error) {
+    console.error("ListWordArchive error:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 }

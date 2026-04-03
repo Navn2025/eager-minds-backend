@@ -1,5 +1,7 @@
 import type { Request, Response } from "express";
 import type { AuthRequest } from "../middleware/auth.js";
+export declare function ensureWordOfTheDayForDate(date: Date): Promise<void>;
+export declare function startAutomaticWordGeneration(): void;
 export declare function getSubjects(req: Request, res: Response): Promise<void>;
 export declare function createSubject(req: Request, res: Response): Promise<void>;
 export declare function deleteSubject(req: Request, res: Response): Promise<void>;
@@ -13,6 +15,7 @@ export declare function deleteWorksheet(req: Request, res: Response): Promise<vo
 export declare function updateWorksheet(req: AuthRequest, res: Response): Promise<void>;
 export declare function completeWorksheet(req: AuthRequest, res: Response): Promise<void>;
 export declare function getWordOfTheDay(_req: Request, res: Response): Promise<void>;
+export declare function listWordArchive(req: Request, res: Response): Promise<void>;
 export declare function createWordOfTheDay(req: Request, res: Response): Promise<void>;
 export declare function listVocabularyWords(req: Request, res: Response): Promise<void>;
 export declare function deleteVocabularyWord(req: Request, res: Response): Promise<void>;

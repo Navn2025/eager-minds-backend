@@ -28,11 +28,6 @@ router.post(
 );
 router.put("/:id", authenticate, requireRole("admin"), updatePaper);
 router.delete("/:id", authenticate, requireRole("admin"), deletePaper);
-router.patch(
-  "/:id/complete",
-  authenticate,
-  requireRole("premium", "admin"),
-  completePaper,
-);
+router.patch("/:id/complete", authenticate, completePaper);
 
 export default router;

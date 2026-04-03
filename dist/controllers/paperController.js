@@ -1,33 +1,101 @@
 import prisma from "../lib/prisma.js";
 import { uploadFileToCloud } from "../middleware/upload.js";
+const FREE_PAPER_XP_THRESHOLDS = [300, 700, 1200, 1800, 2500];
+function getNextPaperUnlockXp(totalXp) {
+    return (FREE_PAPER_XP_THRESHOLDS.find((threshold) => threshold > totalXp) ?? null);
+}
 export async function getPapers(req, res) {
     try {
-        if (!req.user ||
-            (req.user.role !== "premium" && req.user.role !== "admin")) {
+        if (!req.user) {
+            res.status(401).json({ message: "Not authenticated" });
+            return;
+        }
+        const accessUser = await prisma.user.findUnique({
+            where: { id: req.user.id },
+            select: {
+                role: true,
+                quizXp: true,
+                freePaperUnlocks: true,
+            },
+        });
+        if (!accessUser) {
+            res.status(404).json({ message: "User not found" });
+            return;
+        }
+        const hasPremiumAccess = accessUser.role === "premium" || accessUser.role === "admin";
+        const freePaperUnlocks = accessUser.freePaperUnlocks || 0;
+        if (!hasPremiumAccess && freePaperUnlocks <= 0) {
             res.status(403).json({
-                message: "This resource is available only for upgraded members.",
+                message: "This resource is available for premium members, or by earning quiz XP to unlock free papers.",
+                entitlement: {
+                    hasPremiumAccess: false,
+                    freePaperUnlocks,
+                    totalXp: accessUser.quizXp,
+                    nextUnlockXp: getNextPaperUnlockXp(accessUser.quizXp),
+                },
             });
             return;
         }
-        const { subjectId, difficulty, page: pageStr, limit: limitStr } = req.query;
+        const { subjectId, subject, difficulty, page: pageStr, limit: limitStr, } = req.query;
         const page = Math.max(1, parseInt(pageStr) || 1);
         const limit = Math.min(50, Math.max(1, parseInt(limitStr) || 20));
         const where = {};
         if (subjectId)
             where.subjectId = subjectId;
+        if (!subjectId && typeof subject === "string" && subject.trim()) {
+            const subjectValue = subject.trim();
+            where.subject = {
+                is: {
+                    OR: [
+                        { slug: { equals: subjectValue, mode: "insensitive" } },
+                        { name: { equals: subjectValue, mode: "insensitive" } },
+                    ],
+                },
+            };
+        }
         if (difficulty)
             where.difficulty = difficulty;
-        const [papers, total] = await Promise.all([
-            prisma.paper.findMany({
+        let papers = [];
+        let total = 0;
+        if (hasPremiumAccess) {
+            const [premiumPapers, premiumTotal] = await Promise.all([
+                prisma.paper.findMany({
+                    where,
+                    include: {
+                        subject: { select: { id: true, name: true, slug: true } },
+                    },
+                    skip: (page - 1) * limit,
+                    take: limit,
+                    orderBy: { createdAt: "desc" },
+                }),
+                prisma.paper.count({ where }),
+            ]);
+            papers = premiumPapers;
+            total = premiumTotal;
+        }
+        else {
+            const unlockedPool = await prisma.paper.findMany({
                 where,
-                include: { subject: { select: { name: true, slug: true } } },
-                skip: (page - 1) * limit,
-                take: limit,
+                include: { subject: { select: { id: true, name: true, slug: true } } },
                 orderBy: { createdAt: "desc" },
-            }),
-            prisma.paper.count({ where }),
-        ]);
-        res.json({ papers, total, page, totalPages: Math.ceil(total / limit) });
+                take: freePaperUnlocks,
+            });
+            total = unlockedPool.length;
+            const start = (page - 1) * limit;
+            papers = unlockedPool.slice(start, start + limit);
+        }
+        res.json({
+            papers,
+            total,
+            page,
+            totalPages: Math.ceil(total / limit),
+            entitlement: {
+                hasPremiumAccess,
+                freePaperUnlocks,
+                totalXp: accessUser.quizXp,
+                nextUnlockXp: getNextPaperUnlockXp(accessUser.quizXp),
+            },
+        });
     }
     catch (error) {
         console.error("GetPapers error:", error);
@@ -36,12 +104,42 @@ export async function getPapers(req, res) {
 }
 export async function getPaper(req, res) {
     try {
-        if (!req.user ||
-            (req.user.role !== "premium" && req.user.role !== "admin")) {
-            res.status(403).json({
-                message: "This resource is available only for upgraded members.",
-            });
+        if (!req.user) {
+            res.status(401).json({ message: "Not authenticated" });
             return;
+        }
+        const accessUser = await prisma.user.findUnique({
+            where: { id: req.user.id },
+            select: {
+                role: true,
+                freePaperUnlocks: true,
+            },
+        });
+        if (!accessUser) {
+            res.status(404).json({ message: "User not found" });
+            return;
+        }
+        const hasPremiumAccess = accessUser.role === "premium" || accessUser.role === "admin";
+        if (!hasPremiumAccess) {
+            const freePaperUnlocks = accessUser.freePaperUnlocks || 0;
+            if (freePaperUnlocks <= 0) {
+                res.status(403).json({
+                    message: "This paper is locked. Earn quiz XP to unlock free papers or upgrade to premium.",
+                });
+                return;
+            }
+            const unlockedPaperIds = await prisma.paper.findMany({
+                select: { id: true },
+                orderBy: { createdAt: "desc" },
+                take: freePaperUnlocks,
+            });
+            const allowedIdSet = new Set(unlockedPaperIds.map((p) => p.id));
+            if (!allowedIdSet.has(req.params.id)) {
+                res.status(403).json({
+                    message: "This paper is outside your current free unlock range. Earn more quiz XP to unlock additional papers.",
+                });
+                return;
+            }
         }
         const paper = await prisma.paper.findUnique({
             where: { id: req.params.id },

@@ -79,6 +79,16 @@ export async function updateProject(
     const files = req.files as Express.Multer.File[] | undefined;
     const data: Record<string, unknown> = {};
 
+    const existing = await prisma.artsCraftProject.findUnique({
+      where: { id: req.params.id },
+      select: { images: true },
+    });
+
+    if (!existing) {
+      res.status(404).json({ message: "Project not found" });
+      return;
+    }
+
     if (title) data.title = title;
     if (description) data.description = description;
     if (instructions !== undefined) data.instructions = instructions;
@@ -88,7 +98,8 @@ export async function updateProject(
         uploadFileToCloud(f, "eager-minds/arts-craft"),
       );
       const results = await Promise.all(uploadPromises);
-      data.images = results.map((r) => r.secure_url);
+      const newImages = results.map((r) => r.secure_url);
+      data.images = [...existing.images, ...newImages];
     }
 
     const project = await prisma.artsCraftProject.update({

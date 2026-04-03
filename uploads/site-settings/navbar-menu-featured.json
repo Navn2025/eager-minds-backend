@@ -1,0 +1,57 @@
+{
+  "sections": {
+    "home": [
+      "https://res.cloudinary.com/dmhzc984s/image/upload/v1775216077/eager-minds/site-images/navbarHome/df1vweaqj2hse3wokbqa.png",
+      null
+    ],
+    "about": [
+      null,
+      null
+    ],
+    "clubs": [
+      null,
+      null
+    ],
+    "workshops": [
+      null,
+      null
+    ],
+    "arts-craft": [
+      null,
+      null
+    ],
+    "free-sheets": [
+      null,
+      null
+    ],
+    "gallery": [
+      null,
+      null
+    ],
+    "word-of-the-day": [
+      null,
+      null
+    ],
+    "competitions": [
+      null,
+      null
+    ],
+    "magazines": [
+      null,
+      null
+    ],
+    "blog": [
+      null,
+      null
+    ],
+    "contact": [
+      null,
+      null
+    ],
+    "login": [
+      null,
+      null
+    ]
+  },
+  "updatedAt": "2026-04-03T11:41:58.633Z"
+}

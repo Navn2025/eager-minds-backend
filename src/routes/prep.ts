@@ -13,6 +13,7 @@ import {
   updateWorksheet,
   completeWorksheet,
   getWordOfTheDay,
+  listWordArchive,
   createWordOfTheDay,
   listVocabularyWords,
   deleteVocabularyWord,
@@ -73,6 +74,7 @@ router.patch("/worksheets/:id/complete", authenticate, completeWorksheet);
 
 // Word of the Day
 router.get("/word-of-the-day", getWordOfTheDay);
+router.get("/word-of-the-day/archive", listWordArchive);
 router.post(
   "/word-of-the-day",
   authenticate,

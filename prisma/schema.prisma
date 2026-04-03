@@ -13,10 +13,39 @@ model User {
   password         String
   role             Role            @default(standard)
   membershipStatus String          @default("standard")
+  quizXp           Int             @default(0)
+  quizCoins        Int             @default(0)
+  quizBadge        String          @default("Rising Learner")
+  freePaperUnlocks Int             @default(0)
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
   completions      Completion[]
+  quizAttempts     QuizAttempt[]
   savedResources   SavedResource[]
+}
+
+model QuizAttempt {
+  id             String   @id @default(uuid())
+  userId         String
+  quizNumber     String
+  title          String
+  category       String
+  topic          String
+  type           String
+  difficulty     String
+  questionCount  Int
+  quizPayload    Json
+  selectedAnswers Json?
+  score          Int?
+  totalQuestions Int?
+  percentage     Int?
+  status         String   @default("generated")
+  generatedAt    DateTime @default(now())
+  attemptedAt    DateTime?
+  updatedAt      DateTime @updatedAt
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, quizNumber])
 }
 
 model Subject {

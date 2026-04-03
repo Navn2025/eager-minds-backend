@@ -60,6 +60,14 @@ export async function updateProject(req, res) {
         const { title, description, instructions, videoUrl } = req.body;
         const files = req.files;
         const data = {};
+        const existing = await prisma.artsCraftProject.findUnique({
+            where: { id: req.params.id },
+            select: { images: true },
+        });
+        if (!existing) {
+            res.status(404).json({ message: "Project not found" });
+            return;
+        }
         if (title)
             data.title = title;
         if (description)
@@ -71,7 +79,8 @@ export async function updateProject(req, res) {
         if (files?.length) {
             const uploadPromises = files.map((f) => uploadFileToCloud(f, "eager-minds/arts-craft"));
             const results = await Promise.all(uploadPromises);
-            data.images = results.map((r) => r.secure_url);
+            const newImages = results.map((r) => r.secure_url);
+            data.images = [...existing.images, ...newImages];
         }
         const project = await prisma.artsCraftProject.update({
             where: { id: req.params.id },

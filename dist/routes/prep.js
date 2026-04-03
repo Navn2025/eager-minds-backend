@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getSubjects, createSubject, deleteSubject, getTopics, createTopic, deleteTopic, getWorksheets, getAllWorksheets, createWorksheet, deleteWorksheet, updateWorksheet, completeWorksheet, getWordOfTheDay, createWordOfTheDay, listVocabularyWords, deleteVocabularyWord, updateVocabularyWord, getUserDashboard, getUserProgress, } from "../controllers/prepController.js";
+import { getSubjects, createSubject, deleteSubject, getTopics, createTopic, deleteTopic, getWorksheets, getAllWorksheets, createWorksheet, deleteWorksheet, updateWorksheet, completeWorksheet, getWordOfTheDay, listWordArchive, createWordOfTheDay, listVocabularyWords, deleteVocabularyWord, updateVocabularyWord, getUserDashboard, getUserProgress, } from "../controllers/prepController.js";
 import { authenticate, requireRole } from "../middleware/auth.js";
 import { upload } from "../middleware/upload.js";
 const router = Router();
@@ -26,6 +26,7 @@ router.put("/worksheets/:id", authenticate, requireRole("admin"), upload.fields(
 router.patch("/worksheets/:id/complete", authenticate, completeWorksheet);
 // Word of the Day
 router.get("/word-of-the-day", getWordOfTheDay);
+router.get("/word-of-the-day/archive", listWordArchive);
 router.post("/word-of-the-day", authenticate, requireRole("admin"), createWordOfTheDay);
 router.get("/vocabulary", authenticate, requireRole("admin"), listVocabularyWords);
 router.post("/vocabulary", authenticate, requireRole("admin"), createWordOfTheDay);

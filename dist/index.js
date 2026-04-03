@@ -5,6 +5,7 @@ import path from "path";
 import fs from "fs";
 import authRoutes from "./routes/auth.js";
 import prepRoutes from "./routes/prep.js";
+import { startAutomaticWordGeneration } from "./controllers/prepController.js";
 import competitionRoutes from "./routes/competitions.js";
 import artsCraftRoutes from "./routes/artsCraft.js";
 import activityRoutes from "./routes/activities.js";
@@ -12,9 +13,12 @@ import eventRoutes from "./routes/events.js";
 import blogRoutes from "./routes/blog.js";
 import magazineRoutes from "./routes/magazines.js";
 import paperRoutes from "./routes/papers.js";
+import quizRoutes from "./routes/quiz.js";
 import enquiryRoutes from "./routes/enquiries.js";
 import faqRoutes from "./routes/faqs.js";
 import testimonialRoutes from "./routes/testimonials.js";
+import adminImagesRoutes from "./routes/adminImages.js";
+import siteConfigRoutes from "./routes/siteConfig.js";
 import prisma from "./lib/prisma.js";
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -50,12 +54,16 @@ app.use("/api/events", eventRoutes);
 app.use("/api/blog", blogRoutes);
 app.use("/api/magazines", magazineRoutes);
 app.use("/api/papers", paperRoutes);
+app.use("/api/quiz", quizRoutes);
 app.use("/api/enquiries", enquiryRoutes);
 app.use("/api/faqs", faqRoutes);
 app.use("/api/testimonials", testimonialRoutes);
+app.use("/api/admin/images", adminImagesRoutes);
+app.use("/api/site-config", siteConfigRoutes);
 app.get("/api/health", (_req, res) => {
     res.json({ status: "ok" });
 });
+startAutomaticWordGeneration();
 app.get("/api/visitors", async (_req, res) => {
     try {
         const stat = await prisma.siteStat.upsert({
